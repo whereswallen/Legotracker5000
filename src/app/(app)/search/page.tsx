@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useSession } from "next-auth/react";
 import useSWR from "swr";
 import Image from "next/image";
 import { SearchBar } from "@/components/search-bar";
@@ -10,6 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/components/ui/use-toast";
 import {
   AlertTriangle,
@@ -36,6 +42,7 @@ export default function SearchPage() {
   const [query, setQuery] = useState("");
   const [addingSet, setAddingSet] = useState<string | null>(null);
   const [addedSets, setAddedSets] = useState<Set<string>>(new Set());
+  const [addStatus, setAddStatus] = useState<"owned" | "wishlist" | "wanted">("owned");
 
   // Manual add form state
   const [manualForm, setManualForm] = useState({
@@ -45,18 +52,21 @@ export default function SearchPage() {
     theme: "",
     numParts: "",
     imgUrl: "",
+    status: "owned" as "owned" | "wishlist" | "wanted",
   });
   const [manualLoading, setManualLoading] = useState(false);
 
-  // Check if user has API key by fetching profile
-  const { data: profile } = useSWR("/api/sets/stats", fetcher);
+  // Check if user has API key
+  const { data: profile } = useSWR("/api/profile", fetcher);
   const hasApiKey = profile?.hasApiKey === true;
 
   // Search results from Rebrickable
   const { data: results, isLoading: searchLoading } = useSWR<{
     results: RebrickableSet[];
   }>(
-    query && hasApiKey ? `/api/rebrickable/search?q=${encodeURIComponent(query)}` : null,
+    query && hasApiKey
+      ? `/api/rebrickable/search?q=${encodeURIComponent(query)}`
+      : null,
     fetcher
   );
 
@@ -64,7 +74,10 @@ export default function SearchPage() {
     setQuery(q);
   }, []);
 
-  const addToCollection = async (set: RebrickableSet) => {
+  const addToCollection = async (
+    set: RebrickableSet,
+    status: "owned" | "wishlist" | "wanted" = "owned"
+  ) => {
     setAddingSet(set.set_num);
     try {
       const res = await fetch("/api/sets", {
@@ -77,7 +90,7 @@ export default function SearchPage() {
           year: set.year,
           numParts: set.num_parts,
           setImgUrl: set.set_img_url,
-          status: "owned",
+          status,
         }),
       });
 
@@ -87,7 +100,10 @@ export default function SearchPage() {
       }
 
       setAddedSets((prev) => new Set(prev).add(set.set_num));
-      toast({ title: "Set added!", description: `${set.name} added to your collection.` });
+      toast({
+        title: "Set added!",
+        description: `${set.name} added as ${status}.`,
+      });
     } catch (err) {
       toast({
         title: "Error",
@@ -114,7 +130,7 @@ export default function SearchPage() {
           year: manualForm.year ? parseInt(manualForm.year) : null,
           numParts: manualForm.numParts ? parseInt(manualForm.numParts) : null,
           setImgUrl: manualForm.imgUrl || null,
-          status: "owned",
+          status: manualForm.status,
         }),
       });
 
@@ -125,9 +141,17 @@ export default function SearchPage() {
 
       toast({
         title: "Set added!",
-        description: `${manualForm.name} added to your collection.`,
+        description: `${manualForm.name} added as ${manualForm.status}.`,
       });
-      setManualForm({ setNum: "", name: "", year: "", theme: "", numParts: "", imgUrl: "" });
+      setManualForm({
+        setNum: "",
+        name: "",
+        year: "",
+        theme: "",
+        numParts: "",
+        imgUrl: "",
+        status: "owned",
+      });
     } catch (err) {
       toast({
         title: "Error",
@@ -159,7 +183,10 @@ export default function SearchPage() {
               </p>
               <p className="mt-1 text-muted-foreground">
                 Add a Rebrickable API key in{" "}
-                <a href="/profile" className="font-medium text-primary hover:underline">
+                <a
+                  href="/profile"
+                  className="font-medium text-primary hover:underline"
+                >
                   Profile
                 </a>{" "}
                 for auto-search. Use manual add below for now.
@@ -167,6 +194,26 @@ export default function SearchPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {/* Add-as selector for search results */}
+      {hasApiKey && query && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground">Add as:</span>
+          <div className="flex gap-1">
+            {(["owned", "wishlist", "wanted"] as const).map((s) => (
+              <Button
+                key={s}
+                size="sm"
+                variant={addStatus === s ? "default" : "outline"}
+                className="h-7 text-xs capitalize"
+                onClick={() => setAddStatus(s)}
+              >
+                {s}
+              </Button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Search results from Rebrickable */}
@@ -202,11 +249,17 @@ export default function SearchPage() {
                     <p className="truncate text-sm font-semibold">{set.name}</p>
                     <div className="flex flex-wrap gap-1">
                       {set.theme && (
-                        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                        <Badge
+                          variant="secondary"
+                          className="px-1.5 py-0 text-[10px]"
+                        >
                           {set.theme}
                         </Badge>
                       )}
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                      <Badge
+                        variant="secondary"
+                        className="px-1.5 py-0 text-[10px]"
+                      >
                         {set.year}
                       </Badge>
                       <span className="text-[10px] text-muted-foreground">
@@ -216,9 +269,13 @@ export default function SearchPage() {
                   </div>
                   <Button
                     size="sm"
-                    variant={addedSets.has(set.set_num) ? "secondary" : "default"}
-                    disabled={addingSet === set.set_num || addedSets.has(set.set_num)}
-                    onClick={() => addToCollection(set)}
+                    variant={
+                      addedSets.has(set.set_num) ? "secondary" : "default"
+                    }
+                    disabled={
+                      addingSet === set.set_num || addedSets.has(set.set_num)
+                    }
+                    onClick={() => addToCollection(set, addStatus)}
                     className="flex-shrink-0"
                   >
                     {addingSet === set.set_num ? (
@@ -321,7 +378,10 @@ export default function SearchPage() {
                     placeholder="7541"
                     value={manualForm.numParts}
                     onChange={(e) =>
-                      setManualForm((f) => ({ ...f, numParts: e.target.value }))
+                      setManualForm((f) => ({
+                        ...f,
+                        numParts: e.target.value,
+                      }))
                     }
                   />
                 </div>
@@ -340,6 +400,28 @@ export default function SearchPage() {
                     setManualForm((f) => ({ ...f, imgUrl: e.target.value }))
                   }
                 />
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-xs">Status</Label>
+                <Select
+                  value={manualForm.status}
+                  onValueChange={(v) =>
+                    setManualForm((f) => ({
+                      ...f,
+                      status: v as "owned" | "wishlist" | "wanted",
+                    }))
+                  }
+                >
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="owned">Owned</SelectItem>
+                    <SelectItem value="wishlist">Wishlist</SelectItem>
+                    <SelectItem value="wanted">Wanted</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <Button

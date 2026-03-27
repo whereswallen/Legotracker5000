@@ -12,16 +12,56 @@ import {
   ScanBarcode,
   Loader2,
 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
+const CHART_COLORS = [
+  "#3B82F6",
+  "#10B981",
+  "#F59E0B",
+  "#EF4444",
+  "#8B5CF6",
+  "#EC4899",
+  "#06B6D4",
+  "#84CC16",
+];
+
+interface ThemeBreakdown {
+  theme: string;
+  count: number;
+  pieces: number;
+}
+
+interface YearBreakdown {
+  year: number;
+  count: number;
+}
 
 interface Stats {
   totalSets: number;
   totalPieces: number;
-  totalMinifigs: number;
+  ownedSets: number;
+  wishlistSets: number;
+  wantedSets: number;
   estimatedValue: number;
+  builtSets: number;
+  sealedSets: number;
+  totalMinifigs: number;
+  themeBreakdown: ThemeBreakdown[];
+  yearBreakdown: YearBreakdown[];
 }
 
 export default function DashboardPage() {
@@ -61,6 +101,18 @@ export default function DashboardPage() {
       icon: DollarSign,
       color: "text-yellow-500",
     },
+  ];
+
+  const builtCount = stats?.builtSets ?? 0;
+  const sealedCount = stats?.sealedSets ?? 0;
+  const ownedCount = stats?.ownedSets ?? 0;
+  const unbuiltCount = Math.max(0, ownedCount - builtCount - sealedCount);
+  const buildTotal = builtCount + sealedCount + unbuiltCount;
+
+  const buildStatuses = [
+    { label: "Built", count: builtCount, color: "#10B981" },
+    { label: "Sealed", count: sealedCount, color: "#3B82F6" },
+    { label: "Unbuilt", count: unbuiltCount, color: "#F59E0B" },
   ];
 
   return (
@@ -103,6 +155,158 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Collection Breakdown - Pie Chart */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Collection Breakdown</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex h-[300px] items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !stats?.themeBreakdown || stats.themeBreakdown.length === 0 ? (
+            <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+              Add sets to see your theme breakdown
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={stats.themeBreakdown}
+                  dataKey="count"
+                  nameKey="theme"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  label={({ name, value }: { name?: string; value?: number }) => `${name ?? ""} (${value ?? 0})`}
+                  labelLine
+                >
+                  {stats.themeBreakdown.map((_, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={CHART_COLORS[index % CHART_COLORS.length]}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  formatter={(value: any, name: any) => [value, name]}
+                  contentStyle={{
+                    borderRadius: "8px",
+                    border: "1px solid hsl(var(--border))",
+                    backgroundColor: "hsl(var(--card))",
+                    color: "hsl(var(--card-foreground))",
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Collection Timeline - Bar Chart */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Collection Timeline</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex h-[300px] items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : !stats?.yearBreakdown || stats.yearBreakdown.length === 0 ? (
+            <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+              Add sets to see your collection timeline
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart
+                data={stats.yearBreakdown}
+                margin={{ top: 5, right: 20, left: 0, bottom: 5 }}
+              >
+                <XAxis
+                  dataKey="year"
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 12 }}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    borderRadius: "8px",
+                    border: "1px solid hsl(var(--border))",
+                    backgroundColor: "hsl(var(--card))",
+                    color: "hsl(var(--card-foreground))",
+                  }}
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  formatter={(value: any) => [value, "Sets"]}
+                  labelFormatter={(label) => `Year ${label}`}
+                />
+                <Bar dataKey="count" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Build Status */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-lg">Build Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex h-16 items-center justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : buildTotal === 0 ? (
+            <div className="flex h-16 items-center justify-center text-sm text-muted-foreground">
+              No owned sets to show build status
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Horizontal stacked bar */}
+              <div className="flex h-6 w-full overflow-hidden rounded-full">
+                {buildStatuses.map(
+                  (status) =>
+                    status.count > 0 && (
+                      <div
+                        key={status.label}
+                        className="transition-all duration-300"
+                        style={{
+                          width: `${(status.count / buildTotal) * 100}%`,
+                          backgroundColor: status.color,
+                        }}
+                      />
+                    )
+                )}
+              </div>
+
+              {/* Legend */}
+              <div className="flex flex-wrap gap-4">
+                {buildStatuses.map((status) => (
+                  <div key={status.label} className="flex items-center gap-2">
+                    <div
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: status.color }}
+                    />
+                    <span className="text-sm text-muted-foreground">
+                      {status.label}
+                    </span>
+                    <span className="text-sm font-semibold">{status.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Quick actions */}
       <div className="space-y-3">

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/use-toast";
-import { Loader2, Plus, User, Users } from "lucide-react";
+import { Loader2, Plus, Trash2, User, Users } from "lucide-react";
 import type { SelectUserMinifig } from "@/lib/db/schema";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -26,6 +27,7 @@ export default function MinifigsPage() {
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     figNum: "",
@@ -53,6 +55,38 @@ export default function MinifigsPage() {
       fig.figNum.toLowerCase().includes(q)
     );
   });
+
+  const handleDelete = async (fig: SelectUserMinifig) => {
+    const confirmed = window.confirm(
+      `Delete "${fig.name}" (${fig.figNum}) from your collection?`
+    );
+    if (!confirmed) return;
+
+    setDeleting(fig.id);
+    try {
+      const res = await fetch(`/api/minifigs?id=${fig.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to delete minifig");
+      }
+      toast({
+        title: "Minifig deleted",
+        description: `${fig.name} removed from your collection.`,
+      });
+      await mutate();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description:
+          err instanceof Error ? err.message : "Failed to delete minifig",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,6 +234,20 @@ export default function MinifigsPage() {
           {filtered.map((fig) => (
             <Card key={fig.id} className="overflow-hidden">
               <div className="relative aspect-square w-full bg-muted">
+                {/* Delete button - top left */}
+                <button
+                  onClick={() => handleDelete(fig)}
+                  disabled={deleting === fig.id}
+                  className="absolute left-1.5 top-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-destructive/80 text-destructive-foreground transition-colors hover:bg-destructive"
+                  aria-label={`Delete ${fig.name}`}
+                >
+                  {deleting === fig.id ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3 w-3" />
+                  )}
+                </button>
+
                 {fig.imgUrl ? (
                   <Image
                     src={fig.imgUrl}
@@ -213,10 +261,12 @@ export default function MinifigsPage() {
                     <User className="h-10 w-10 text-muted-foreground" />
                   </div>
                 )}
+
+                {/* Quantity badge - top right */}
                 {(fig.quantity ?? 1) > 1 && (
-                  <div className="absolute right-1.5 top-1.5 rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">
+                  <Badge className="absolute right-1.5 top-1.5 text-xs font-bold">
                     x{fig.quantity}
-                  </div>
+                  </Badge>
                 )}
               </div>
               <CardContent className="p-3">
@@ -224,6 +274,11 @@ export default function MinifigsPage() {
                 <p className="line-clamp-2 text-sm font-semibold leading-tight">
                   {fig.name}
                 </p>
+                {fig.sourceSetNum && (
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">
+                    From set {fig.sourceSetNum}
+                  </p>
+                )}
               </CardContent>
             </Card>
           ))}

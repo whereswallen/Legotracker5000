@@ -36,7 +36,7 @@ export default function ProfilePage() {
   const { toast } = useToast();
   const { data: session } = useSession();
   const { data: profile, mutate: mutateProfile } = useSWR<ProfileData>(
-    "/api/sets/stats",
+    "/api/profile",
     fetcher
   );
 
@@ -77,7 +77,7 @@ export default function ProfilePage() {
   const saveDisplayName = async () => {
     setSavingName(true);
     try {
-      const res = await fetch("/api/sets/stats", {
+      const res = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ displayName }),
@@ -99,7 +99,7 @@ export default function ProfilePage() {
   const saveApiKey = async () => {
     setSavingKey(true);
     try {
-      const res = await fetch("/api/sets/stats", {
+      const res = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ rebrickableApiKey: apiKey }),
@@ -123,7 +123,7 @@ export default function ProfilePage() {
     setSavingPublic(true);
     const newValue = !isPublic;
     try {
-      const res = await fetch("/api/sets/stats", {
+      const res = await fetch("/api/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isPublic: newValue ? 1 : 0 }),

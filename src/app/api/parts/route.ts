@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { missingParts, userSets } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -14,8 +14,8 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const userSetId = url.searchParams.get("userSetId");
 
+  // If requesting parts for a specific set, return raw missing parts
   if (userSetId) {
-    // Get missing parts for a specific set (verify ownership)
     const set = await db
       .select()
       .from(userSets)
@@ -36,18 +36,35 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(parts);
   }
 
-  // Get all missing parts across all sets
-  const parts = await db
+  // Aggregated view: all missing parts across all sets, grouped by part number + color
+  const rawParts = await db
     .select({
-      part: missingParts,
-      setName: userSets.name,
-      setNum: userSets.setNum,
+      partNum: missingParts.partNum,
+      partName: missingParts.partName,
+      colorName: missingParts.colorName,
+      imgUrl: missingParts.imgUrl,
+      totalQuantity: sql<number>`sum(${missingParts.quantity})`,
+      unresolvedCount: sql<number>`sum(case when ${missingParts.resolved} = 0 then ${missingParts.quantity} else 0 end)`,
     })
     .from(missingParts)
     .innerJoin(userSets, eq(missingParts.userSetId, userSets.id))
-    .where(eq(userSets.userId, session.user.id));
+    .where(eq(userSets.userId, session.user.id))
+    .groupBy(missingParts.partNum, missingParts.colorName);
 
-  return NextResponse.json(parts);
+  const parts = rawParts.map((p) => ({
+    partNum: p.partNum,
+    name: p.partName || p.partNum,
+    color: p.colorName || "Unknown",
+    imgUrl: p.imgUrl,
+    totalQuantity: p.totalQuantity,
+    unresolvedCount: p.unresolvedCount,
+  }));
+
+  return NextResponse.json({
+    uniqueParts: parts.length,
+    totalCount: parts.reduce((sum, p) => sum + p.totalQuantity, 0),
+    parts,
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -57,7 +74,15 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json();
-  const { userSetId, partNum, partName, colorName, colorId, quantity = 1, imgUrl } = body;
+  const {
+    userSetId,
+    partNum,
+    partName,
+    colorName,
+    colorId,
+    quantity = 1,
+    imgUrl,
+  } = body;
 
   // Verify set ownership
   const set = await db

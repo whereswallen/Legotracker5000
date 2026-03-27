@@ -1,13 +1,20 @@
-const CACHE_NAME = "legotracker-v1";
+const CACHE_NAME = "legotracker-v2";
 const STATIC_ASSETS = [
   "/",
+  "/login",
+  "/signup",
   "/dashboard",
   "/collection",
   "/search",
   "/scan",
+  "/minifigs",
+  "/parts",
   "/profile",
   "/manifest.json",
 ];
+
+// Cacheable API routes (for offline fallback)
+const CACHEABLE_API = ["/api/sets", "/api/sets/stats", "/api/minifigs", "/api/parts", "/api/profile"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -36,12 +43,29 @@ self.addEventListener("fetch", (event) => {
   // Skip non-GET requests
   if (request.method !== "GET") return;
 
-  // Skip API routes and auth - always go to network
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {
+  // Skip auth routes
+  if (url.pathname.startsWith("/api/auth/")) return;
+
+  // API routes: network-first with cache fallback for offline
+  if (url.pathname.startsWith("/api/")) {
+    const isCacheable = CACHEABLE_API.some((p) => url.pathname.startsWith(p));
+    if (isCacheable) {
+      event.respondWith(
+        fetch(request)
+          .then((response) => {
+            if (response.ok) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+            }
+            return response;
+          })
+          .catch(() => caches.match(request))
+      );
+    }
     return;
   }
 
-  // Network-first for HTML pages, cache-first for assets
+  // HTML pages: network-first with cache fallback
   if (request.headers.get("accept")?.includes("text/html")) {
     event.respondWith(
       fetch(request)
@@ -52,26 +76,26 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => caches.match(request).then((r) => r || caches.match("/")))
     );
-  } else {
-    event.respondWith(
-      caches.match(request).then((cached) => {
-        return (
-          cached ||
-          fetch(request).then((response) => {
-            if (
-              response.ok &&
-              (url.pathname.startsWith("/_next/static/") ||
-                url.pathname.startsWith("/icons/"))
-            ) {
-              const clone = response.clone();
-              caches
-                .open(CACHE_NAME)
-                .then((cache) => cache.put(request, clone));
-            }
-            return response;
-          })
-        );
-      })
-    );
+    return;
   }
+
+  // Static assets: cache-first
+  event.respondWith(
+    caches.match(request).then((cached) => {
+      return (
+        cached ||
+        fetch(request).then((response) => {
+          if (
+            response.ok &&
+            (url.pathname.startsWith("/_next/static/") ||
+              url.pathname.startsWith("/icons/"))
+          ) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+      );
+    })
+  );
 });

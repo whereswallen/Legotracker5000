@@ -16,7 +16,9 @@ import {
   Loader2,
   Package,
   Plus,
+  RefreshCw,
   ScanBarcode,
+  Search,
 } from "lucide-react";
 
 interface ScannedSet {
@@ -43,6 +45,11 @@ export default function ScanPage() {
   const [addLoading, setAddLoading] = useState(false);
   const [added, setAdded] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [status, setStatus] = useState<"owned" | "wishlist" | "wanted">("owned");
+
+  // Quick Add by Set Number
+  const [quickSetNum, setQuickSetNum] = useState("");
+  const [quickLookupLoading, setQuickLookupLoading] = useState(false);
 
   // Manual entry form
   const [manualForm, setManualForm] = useState({
@@ -59,6 +66,7 @@ export default function ScanPage() {
       setLookupError(null);
       setLookupResult(null);
       setAdded(false);
+      setStatus("owned");
 
       try {
         const res = await fetch(`/api/rebrickable/sets/${encodeURIComponent(code)}`);
@@ -132,6 +140,19 @@ export default function ScanPage() {
     setScanning(false);
   };
 
+  const handleScanAgain = async () => {
+    await stopScanner();
+    setScannedCode(null);
+    setLookupResult(null);
+    setLookupError(null);
+    setAdded(false);
+    setStatus("owned");
+    // Brief delay to let DOM reset, then start scanner
+    setTimeout(() => {
+      startScanner();
+    }, 100);
+  };
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -156,7 +177,7 @@ export default function ScanPage() {
           year: lookupResult.year,
           numParts: lookupResult.num_parts,
           setImgUrl: lookupResult.set_img_url,
-          status: "owned",
+          status,
         }),
       });
 
@@ -168,7 +189,7 @@ export default function ScanPage() {
       setAdded(true);
       toast({
         title: "Set added!",
-        description: `${lookupResult.name} added to your collection.`,
+        description: `${lookupResult.name} added as ${status}.`,
       });
     } catch (err) {
       toast({
@@ -220,6 +241,36 @@ export default function ScanPage() {
     }
   };
 
+  const handleQuickLookup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickSetNum.trim()) return;
+    setQuickLookupLoading(true);
+
+    try {
+      const res = await fetch(
+        `/api/rebrickable/sets/${encodeURIComponent(quickSetNum.trim())}`
+      );
+      if (!res.ok) {
+        throw new Error("Set not found");
+      }
+      const data = await res.json();
+      setScannedCode(quickSetNum.trim());
+      setLookupResult(data);
+      setLookupError(null);
+      setAdded(false);
+      setStatus("owned");
+      setQuickSetNum("");
+    } catch {
+      toast({
+        title: "Not found",
+        description: `Could not find set "${quickSetNum.trim()}" on Rebrickable.`,
+        variant: "destructive",
+      });
+    } finally {
+      setQuickLookupLoading(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-lg space-y-4 p-4">
       <h1 className="text-2xl font-bold">Scan Barcode</h1>
@@ -236,6 +287,14 @@ export default function ScanPage() {
               <ScanBarcode className="h-16 w-16 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
                 Point your camera at a LEGO set barcode
+              </p>
+            </div>
+          )}
+          {scanning && (
+            <div className="absolute bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-md bg-black/60 px-3 py-1">
+              <p className="flex items-center gap-2 text-xs text-white">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Scanning...
               </p>
             </div>
           )}
@@ -282,53 +341,89 @@ export default function ScanPage() {
             )}
 
             {lookupResult && (
-              <div className="flex items-center gap-3">
-                <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md bg-muted">
-                  {lookupResult.set_img_url ? (
-                    <Image
-                      src={lookupResult.set_img_url}
-                      alt={lookupResult.name}
-                      fill
-                      className="object-contain p-1"
-                      sizes="80px"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center">
-                      <Package className="h-8 w-8 text-muted-foreground" />
-                    </div>
-                  )}
-                </div>
-                <div className="flex min-w-0 flex-1 flex-col gap-1">
-                  <span className="text-xs text-muted-foreground">
-                    {lookupResult.set_num}
-                  </span>
-                  <p className="text-sm font-semibold">{lookupResult.name}</p>
-                  <div className="flex flex-wrap gap-1">
-                    <Badge variant="secondary" className="text-[10px]">
-                      {lookupResult.theme}
-                    </Badge>
-                    <Badge variant="secondary" className="text-[10px]">
-                      {lookupResult.year}
-                    </Badge>
-                    <span className="text-[10px] text-muted-foreground">
-                      {lookupResult.num_parts} pcs
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded-md bg-muted">
+                    {lookupResult.set_img_url ? (
+                      <Image
+                        src={lookupResult.set_img_url}
+                        alt={lookupResult.name}
+                        fill
+                        className="object-contain p-1"
+                        sizes="80px"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <Package className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <span className="text-xs text-muted-foreground">
+                      {lookupResult.set_num}
                     </span>
+                    <p className="text-sm font-semibold">{lookupResult.name}</p>
+                    <div className="flex flex-wrap gap-1">
+                      <Badge variant="secondary" className="text-[10px]">
+                        {lookupResult.theme}
+                      </Badge>
+                      <Badge variant="secondary" className="text-[10px]">
+                        {lookupResult.year}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">
+                        {lookupResult.num_parts} pcs
+                      </span>
+                    </div>
                   </div>
                 </div>
-                <Button
-                  size="sm"
-                  disabled={addLoading || added}
-                  onClick={addFoundSet}
-                  variant={added ? "secondary" : "default"}
-                >
-                  {addLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : added ? (
-                    <Check className="h-4 w-4" />
-                  ) : (
-                    <Plus className="h-4 w-4" />
-                  )}
-                </Button>
+
+                {/* Status selector */}
+                <div className="space-y-1">
+                  <Label className="text-xs">Status</Label>
+                  <div className="flex gap-2">
+                    {(["owned", "wishlist", "wanted"] as const).map((s) => (
+                      <Button
+                        key={s}
+                        type="button"
+                        size="sm"
+                        variant={status === s ? "default" : "outline"}
+                        onClick={() => setStatus(s)}
+                        className="flex-1 capitalize"
+                        disabled={added}
+                      >
+                        {s}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Add / Scan Again buttons */}
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={addLoading || added}
+                    onClick={addFoundSet}
+                    variant={added ? "secondary" : "default"}
+                    className="flex-1"
+                  >
+                    {addLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : added ? (
+                      <Check className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Plus className="mr-2 h-4 w-4" />
+                    )}
+                    {added ? "Added" : "Add to Collection"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={handleScanAgain}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Scan Again
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>
@@ -406,9 +501,46 @@ export default function ScanPage() {
                 Add to Collection
               </Button>
             </form>
+
+            {/* Scan Again button in error state */}
+            <Button
+              variant="outline"
+              className="mt-3 w-full"
+              onClick={handleScanAgain}
+            >
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Scan Again
+            </Button>
           </CardContent>
         </Card>
       )}
+
+      {/* Quick Add by Set Number - always visible */}
+      <Card>
+        <CardContent className="p-4">
+          <h3 className="mb-3 text-sm font-semibold">Quick Add by Set Number</h3>
+          <form onSubmit={handleQuickLookup} className="flex gap-2">
+            <Input
+              value={quickSetNum}
+              onChange={(e) => setQuickSetNum(e.target.value)}
+              placeholder="e.g. 75192-1"
+              className="flex-1"
+            />
+            <Button
+              type="submit"
+              size="sm"
+              disabled={quickLookupLoading || !quickSetNum.trim()}
+            >
+              {quickLookupLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Search className="mr-2 h-4 w-4" />
+              )}
+              Lookup
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }

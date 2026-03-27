@@ -11,6 +11,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,7 +29,6 @@ import {
 import { useToast } from "@/components/ui/use-toast";
 import {
   ArrowLeft,
-  Camera,
   Check,
   Loader2,
   Package,
@@ -32,12 +38,17 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import type { SelectUserSet, SelectMissingPart, SelectSetPhoto } from "@/lib/db/schema";
+import type {
+  SelectUserSet,
+  SelectMissingPart,
+  SelectSetPhoto,
+} from "@/lib/db/schema";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
 const buildStatuses = ["sealed", "unbuilt", "built", "partial"] as const;
 const conditions = ["new", "like_new", "good", "fair", "poor"] as const;
+const collectionStatuses = ["owned", "wishlist", "wanted"] as const;
 
 const buildStatusColors: Record<string, string> = {
   sealed: "bg-blue-500 hover:bg-blue-600",
@@ -56,10 +67,11 @@ export default function SetDetailPage() {
   const router = useRouter();
   const { toast } = useToast();
 
-  const { data: set, isLoading, mutate: mutateSet } = useSWR<SetDetail>(
-    `/api/sets/${id}`,
-    fetcher
-  );
+  const {
+    data: set,
+    isLoading,
+    mutate: mutateSet,
+  } = useSWR<SetDetail>(`/api/sets/${id}`, fetcher);
 
   const [saving, setSaving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -68,6 +80,7 @@ export default function SetDetailPage() {
   // Missing parts form
   const [newPartNum, setNewPartNum] = useState("");
   const [newPartName, setNewPartName] = useState("");
+  const [newPartColor, setNewPartColor] = useState("");
   const [newPartQty, setNewPartQty] = useState("1");
   const [addingPart, setAddingPart] = useState(false);
 
@@ -134,6 +147,7 @@ export default function SetDetailPage() {
           addMissingPart: {
             partNum: newPartNum,
             partName: newPartName || null,
+            colorName: newPartColor || null,
             quantity: parseInt(newPartQty) || 1,
           },
         }),
@@ -143,6 +157,7 @@ export default function SetDetailPage() {
 
       setNewPartNum("");
       setNewPartName("");
+      setNewPartColor("");
       setNewPartQty("1");
       await mutateSet();
       toast({ title: "Part added to missing list." });
@@ -202,6 +217,24 @@ export default function SetDetailPage() {
       });
     } finally {
       setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const deletePhoto = async (photoId: string) => {
+    try {
+      const res = await fetch(`/api/photos?id=${photoId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error("Failed");
+      await mutateSet();
+      toast({ title: "Photo deleted." });
+    } catch {
+      toast({
+        title: "Error",
+        description: "Failed to delete photo.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -224,6 +257,9 @@ export default function SetDetailPage() {
       </div>
     );
   }
+
+  const unresolvedParts = (set.missingParts ?? []).filter((p) => !p.resolved);
+  const resolvedParts = (set.missingParts ?? []).filter((p) => p.resolved);
 
   return (
     <div className="mx-auto max-w-lg space-y-4 p-4">
@@ -269,8 +305,30 @@ export default function SetDetailPage() {
         {set.numParts != null && (
           <Badge variant="secondary">{set.numParts} pieces</Badge>
         )}
-        <Badge variant="outline">{set.status}</Badge>
       </div>
+
+      {/* Collection Status */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Collection Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-2">
+            {collectionStatuses.map((status) => (
+              <Button
+                key={status}
+                size="sm"
+                variant={set.status === status ? "default" : "outline"}
+                onClick={() => updateSet({ status })}
+                disabled={saving}
+                className="capitalize"
+              >
+                {status}
+              </Button>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Build Status */}
       <Card>
@@ -314,7 +372,9 @@ export default function SetDetailPage() {
                 onClick={() => updateSet({ condition: cond })}
                 disabled={saving}
               >
-                {cond.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                {cond
+                  .replace("_", " ")
+                  .replace(/\b\w/g, (c) => c.toUpperCase())}
               </Button>
             ))}
           </div>
@@ -344,49 +404,72 @@ export default function SetDetailPage() {
                 />
               </button>
             ))}
+            {set.rating && (
+              <button
+                onClick={() => updateSet({ rating: 0 })}
+                className="ml-2 rounded p-1 text-xs text-muted-foreground hover:bg-accent"
+              >
+                Clear
+              </button>
+            )}
           </div>
         </CardContent>
       </Card>
 
-      {/* Notes */}
+      {/* Notes & Price */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Notes</CardTitle>
+          <CardTitle className="text-base">Details</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Textarea
-            placeholder="Add notes about this set..."
-            defaultValue={set.notes ?? ""}
-            onBlur={(e) => {
-              if (e.target.value !== (set.notes ?? "")) {
-                updateSet({ notes: e.target.value });
-              }
-            }}
-            rows={3}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Purchase Price */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Purchase Price</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">$</span>
-            <Input
-              type="number"
-              step="0.01"
-              placeholder="0.00"
-              defaultValue={set.purchasePrice ?? ""}
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label className="text-xs">Notes</Label>
+            <Textarea
+              placeholder="Add notes about this set..."
+              defaultValue={set.notes ?? ""}
               onBlur={(e) => {
-                if (e.target.value !== (set.purchasePrice ?? "")) {
-                  updateSet({ purchasePrice: e.target.value || null });
+                if (e.target.value !== (set.notes ?? "")) {
+                  updateSet({ notes: e.target.value });
                 }
               }}
-              className="max-w-[150px]"
+              rows={3}
             />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Purchase Price</Label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">$</span>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="0.00"
+                defaultValue={set.purchasePrice ?? ""}
+                onBlur={(e) => {
+                  if (e.target.value !== (set.purchasePrice ?? "")) {
+                    updateSet({ purchasePrice: e.target.value || null });
+                  }
+                }}
+                className="max-w-[150px]"
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Quantity</Label>
+            <Select
+              value={String(set.quantity ?? 1)}
+              onValueChange={(v) => updateSet({ quantity: parseInt(v) })}
+            >
+              <SelectTrigger className="w-20">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                  <SelectItem key={n} value={String(n)}>
+                    {n}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
@@ -394,17 +477,22 @@ export default function SetDetailPage() {
       {/* Missing Parts */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Missing Parts</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            Missing Parts
+            {unresolvedParts.length > 0 && (
+              <Badge variant="destructive" className="text-xs">
+                {unresolvedParts.length}
+              </Badge>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          {set.missingParts && set.missingParts.length > 0 ? (
+          {unresolvedParts.length > 0 && (
             <div className="space-y-2">
-              {set.missingParts.map((part) => (
+              {unresolvedParts.map((part) => (
                 <div
                   key={part.id}
-                  className={`flex items-center gap-2 rounded-md border p-2 text-sm ${
-                    part.resolved ? "bg-muted opacity-60" : ""
-                  }`}
+                  className="flex items-center gap-2 rounded-md border p-2 text-sm"
                 >
                   <div className="min-w-0 flex-1">
                     <span className="font-mono text-xs">{part.partNum}</span>
@@ -420,64 +508,109 @@ export default function SetDetailPage() {
                       x{part.quantity}
                     </span>
                   </div>
-                  {!part.resolved ? (
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      onClick={() => resolvePart(part.id)}
-                    >
-                      <Check className="h-4 w-4 text-green-500" />
-                    </Button>
-                  ) : (
-                    <Badge variant="secondary" className="text-[10px]">
-                      Resolved
-                    </Badge>
-                  )}
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7"
+                    onClick={() => resolvePart(part.id)}
+                    title="Mark as found"
+                  >
+                    <Check className="h-4 w-4 text-green-500" />
+                  </Button>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No missing parts recorded.</p>
           )}
 
-          <form onSubmit={addMissingPart} className="flex items-end gap-2">
-            <div className="flex-1 space-y-1">
-              <Label className="text-xs">Part #</Label>
-              <Input
-                value={newPartNum}
-                onChange={(e) => setNewPartNum(e.target.value)}
-                placeholder="3001"
-                required
-                className="h-9"
-              />
+          {resolvedParts.length > 0 && (
+            <details className="text-sm">
+              <summary className="cursor-pointer text-xs text-muted-foreground">
+                {resolvedParts.length} resolved part
+                {resolvedParts.length !== 1 ? "s" : ""}
+              </summary>
+              <div className="mt-2 space-y-1">
+                {resolvedParts.map((part) => (
+                  <div
+                    key={part.id}
+                    className="flex items-center gap-2 rounded-md border p-2 opacity-60"
+                  >
+                    <div className="min-w-0 flex-1 line-through">
+                      <span className="font-mono text-xs">{part.partNum}</span>
+                      {part.partName && (
+                        <span className="ml-1">{part.partName}</span>
+                      )}
+                    </div>
+                    <Badge variant="secondary" className="text-[10px]">
+                      Found
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {unresolvedParts.length === 0 && resolvedParts.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No missing parts recorded.
+            </p>
+          )}
+
+          <form onSubmit={addMissingPart} className="space-y-2">
+            <div className="flex items-end gap-2">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">Part #</Label>
+                <Input
+                  value={newPartNum}
+                  onChange={(e) => setNewPartNum(e.target.value)}
+                  placeholder="3001"
+                  required
+                  className="h-9"
+                />
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">Name</Label>
+                <Input
+                  value={newPartName}
+                  onChange={(e) => setNewPartName(e.target.value)}
+                  placeholder="2x4 Brick"
+                  className="h-9"
+                />
+              </div>
+              <div className="w-16 space-y-1">
+                <Label className="text-xs">Qty</Label>
+                <Input
+                  type="number"
+                  value={newPartQty}
+                  onChange={(e) => setNewPartQty(e.target.value)}
+                  min="1"
+                  className="h-9"
+                />
+              </div>
             </div>
-            <div className="flex-1 space-y-1">
-              <Label className="text-xs">Name</Label>
-              <Input
-                value={newPartName}
-                onChange={(e) => setNewPartName(e.target.value)}
-                placeholder="2x4 Brick"
+            <div className="flex items-end gap-2">
+              <div className="flex-1 space-y-1">
+                <Label className="text-xs">Color (optional)</Label>
+                <Input
+                  value={newPartColor}
+                  onChange={(e) => setNewPartColor(e.target.value)}
+                  placeholder="Red"
+                  className="h-9"
+                />
+              </div>
+              <Button
+                type="submit"
+                size="sm"
                 className="h-9"
-              />
+                disabled={addingPart}
+              >
+                {addingPart ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-1 h-4 w-4" />
+                )}
+                Add
+              </Button>
             </div>
-            <div className="w-16 space-y-1">
-              <Label className="text-xs">Qty</Label>
-              <Input
-                type="number"
-                value={newPartQty}
-                onChange={(e) => setNewPartQty(e.target.value)}
-                min="1"
-                className="h-9"
-              />
-            </div>
-            <Button type="submit" size="icon" className="h-9 w-9" disabled={addingPart}>
-              {addingPart ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-            </Button>
           </form>
         </CardContent>
       </Card>
@@ -485,7 +618,14 @@ export default function SetDetailPage() {
       {/* Photos */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Photos</CardTitle>
+          <CardTitle className="text-base">
+            Photos
+            {set.photos && set.photos.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                ({set.photos.length})
+              </span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {set.photos && set.photos.length > 0 ? (
@@ -493,7 +633,7 @@ export default function SetDetailPage() {
               {set.photos.map((photo) => (
                 <div
                   key={photo.id}
-                  className="relative aspect-square overflow-hidden rounded-md bg-muted"
+                  className="group relative aspect-square overflow-hidden rounded-md bg-muted"
                 >
                   <Image
                     src={photo.filePath}
@@ -502,6 +642,12 @@ export default function SetDetailPage() {
                     className="object-cover"
                     sizes="120px"
                   />
+                  <button
+                    onClick={() => deletePhoto(photo.id)}
+                    className="absolute right-1 top-1 hidden rounded-full bg-black/60 p-1 text-white group-hover:block"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
                 </div>
               ))}
             </div>
@@ -519,6 +665,7 @@ export default function SetDetailPage() {
             <input
               type="file"
               accept="image/*"
+              capture="environment"
               onChange={handlePhotoUpload}
               className="hidden"
               disabled={uploading}
@@ -540,7 +687,8 @@ export default function SetDetailPage() {
             <DialogTitle>Delete Set</DialogTitle>
             <DialogDescription>
               Are you sure you want to remove &quot;{set.name}&quot; from your
-              collection? This action cannot be undone.
+              collection? This will also delete all photos and missing parts
+              data. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
