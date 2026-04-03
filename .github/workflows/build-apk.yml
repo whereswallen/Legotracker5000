@@ -3,7 +3,7 @@ name: Build Android APK
 on:
   push:
     branches: [claude/android-apk-migration]
-  workflow_dispatch: # allows manual trigger from GitHub
+  workflow_dispatch:
 
 jobs:
   build:
@@ -30,18 +30,24 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
       - name: Add Android platform
         run: npx cap add android
 
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Accept Android licenses
+        run: yes | sdkmanager --licenses || true
+
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
       - name: Build debug APK
         working-directory: android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --no-daemon
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
