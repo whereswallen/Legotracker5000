@@ -1,44 +1,25 @@
 # dependencies
 /node_modules
-/.pnp
-.pnp.js
-.yarn/install-state.gz
 
-# testing
-/coverage
+# production build
+/dist
 
-# next.js
-/.next/
-/out/
-
-# production
-/build
+# Capacitor native projects
+/android
+/ios
 
 # misc
 .DS_Store
 *.pem
+*.tsbuildinfo
 
 # debug
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
-# env files
+# env
 .env
 .env*.local
 
-# vercel
-.vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# database
-/data/*.db
-/data/*.db-journal
-/data/*.db-wal
-
-# uploads
-/public/uploads/*
-!/public/uploads/.gitkeep
+# IDE
+.vscode
+.idea
