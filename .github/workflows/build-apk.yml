@@ -49,9 +49,22 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK
+      - name: Upload APK as artifact
         uses: actions/upload-artifact@v4
         with:
           name: LegoTracker5000-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 90
+
+      - name: Get short SHA
+        id: sha
+        run: echo "short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release with APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ steps.sha.outputs.short }}
+          name: "LegoTracker5000 Build ${{ steps.sha.outputs.short }}"
+          body: "Debug APK build from commit ${{ github.sha }}. Download the APK below and install on your Android device."
+          files: android/app/build/outputs/apk/debug/app-debug.apk
+          prerelease: true
